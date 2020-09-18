@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from dash.dependencies import Input, Output
 import requests
-from datetime import date
+from datetime import datetime, timedelta
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
@@ -22,11 +22,12 @@ def get_prices(symbol, days):
     df = (df
           .sort_values('date', ascending=True)
           .set_index('date'))
-    df.loc[df.index == df.index.min(), 'changeOverTime'] = np.NaN
-    df['change_indexed'] = 100*np.exp(np.nan_to_num(df['changeOverTime'].cumsum()))
+    df['delta'] = df['changeOverTime']
+    df.loc[df.index == df.index.min(), 'delta'] = np.NaN
+    df['change_indexed'] = 100*np.exp(np.nan_to_num(df['delta'].cumsum()))
     return df
 
-symbols = ['nn.as', 'asrnl.as', 'agn.as']
+symbols = ['NN.AS', 'ASRNL.AS', 'AGN.AS']
 column_list = ['open', 'high', 'low', 'close', 'adjClose', 'volume',
        'unadjustedVolume', 'change', 'changePercent', 'vwap', 'label',
        'changeOverTime', 'symbol', 'indexed']
@@ -68,32 +69,50 @@ app.layout = html.Div(children=[
         multi=True
     ),  
     dcc.Graph(id='g1', figure=fig),
-    dcc.RangeSlider(
-        id='rangeslider',
-        min=numdate[0],
-        max=numdate[-1],
-        value=[numdate[0], numdate[-1]],
-        marks=date_dict
-        ),
-    html.Div(id='output-container-range-slider'),
+    dcc.DatePickerRange(
+        id='my-date-picker-range',
+        display_format='DD-MM-YYYY',
+        min_date_allowed=df.index.min().to_pydatetime(),
+        max_date_allowed=df.index.max().to_pydatetime(),
+        initial_visible_month=df.index.min().to_pydatetime(),
+        start_date=df.index.min().to_pydatetime(),
+        end_date=df.index.max().to_pydatetime()
+    )
+
 ])
 
 @app.callback(
-    [dash.dependencies.Output('g1', 'figure'),
-    dash.dependencies.Output('output-container-range-slider', 'children')],
+    dash.dependencies.Output('g1', 'figure'),
     [dash.dependencies.Input('demo-dropdown', 'value'),
     dash.dependencies.Input('demo-dropdown2', 'value'),
-    dash.dependencies.Input('rangeslider', 'value')])
-def update_graph(value, sel_companies, sel_dates):
+    dash.dependencies.Input('my-date-picker-range', 'start_date'),
+    dash.dependencies.Input('my-date-picker-range', 'end_date')])
+def update_graph(value, sel_companies, start_date, end_date):
     selected = df['symbol'].isin(sel_companies)
+    try: 
+        df.loc[start_date].index[0]
+    except IndexError:
+        start_date = df.loc[df.index > start_date].first('1D')
     try:
-        if selected.unique()[0] or selected.unique()[1] == True:
-            filtered_df = df[df['symbol'].isin(sel_companies)].loc[date_dict[sel_dates[0]]:date_dict[sel_dates[1]]]
-            fig = px.line(filtered_df, x=filtered_df.index, y=value, color='symbol')
-    except: 
+        if (selected.value_counts().index[0] == True) or (selected.value_counts().index[1]) == True:
+            if value == 'change_indexed':
+                # recalculate base as 100 and change
+                df['delta'] = df['changeOverTime'] 
+                df.loc[df.index == str(start_date), 'delta'] = np.NaN
+                df.loc[df.index == str(start_date), 'change_indexed'] = 100
+                for symbol in sel_companies: 
+                    df.loc[((df.index > str(start_date)) & (df.index <= str(end_date)) & (df['symbol'] == symbol)), 'change_indexed'] = 100*np.exp(np.nan_to_num(df.loc[((df.index > str(start_date)) & (df.index <= str(end_date)) & (df['symbol'] == symbol)), 'delta'].cumsum()))
+                    filtered_df = df[df['symbol'].isin(sel_companies)].loc[str(start_date):str(end_date)]
+                fig = px.line(filtered_df, x=filtered_df.index, y=value, color='symbol')
+                return fig
+            else:
+                filtered_df = df[df['symbol'].isin(sel_companies)].loc[str(start_date):str(end_date)]
+                fig = px.line(filtered_df, x=filtered_df.index, y=value, color='symbol')
+                return fig
+    except:
         filtered_df = df
         fig = px.line(filtered_df, x=filtered_df.index)
-    return fig, print(fig)
-        
+        return fig
+
 if __name__ == '__main__':
     app.run_server(port=9050, debug=True)
