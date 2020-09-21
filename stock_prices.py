@@ -1,6 +1,7 @@
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
+import flask
 import plotly.express as px
 import dash_table
 import pandas as pd
@@ -10,8 +11,7 @@ import requests
 from datetime import datetime, timedelta
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
-server = app.server
+app = dash.Dash(__name__, requests_pathname_prefix='/dash_stocks/', external_stylesheets=external_stylesheets)
 
 def get_prices(symbol, days):
     apikey = '16469a8ae9b8895e2c4cd7f2bcd69062'
@@ -114,6 +114,3 @@ def update_graph(value, sel_companies, start_date, end_date):
         filtered_df = df
         fig = px.line(filtered_df, x=filtered_df.index)
         return fig
-
-iif __name__ == '__main__':
-    app.run_server(port=9050, debug=True)
